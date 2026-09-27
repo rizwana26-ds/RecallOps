@@ -160,6 +160,96 @@ function IncidentRow({ incident }: { incident: Incident }) {
   </Link>;
 }
 
+type MockAnalysis = {
+  rootCause: string;
+  service: string;
+  tags: string[];
+  suggestedFix: string;
+  matchedIncident: string;
+  confidence: number;
+  duration: string;
+};
+
+function getMockAnalysis(logText: string): MockAnalysis {
+  const normalized = logText.toLowerCase();
+
+  if (/(kafka|consumer|rebalance|queue|lag|offset)/.test(normalized)) {
+    return {
+      rootCause: 'A consumer rebalance paused partition ownership while a slow downstream dependency caused the processing queue to build up.',
+      service: 'dispatch-worker',
+      tags: ['message queue', 'consumer lag', 'rebalance'],
+      suggestedFix: 'Pause the rebalance loop, restore the consumer group to 6 workers, and replay the oldest 500 messages after lag returns below the alert threshold.',
+      matchedIncident: 'INC-2241 · dispatch consumer rebalance',
+      confidence: 91,
+      duration: '31m',
+    };
+  }
+
+  if (/(postgres|database|deadlock|transaction|lock|replica)/.test(normalized)) {
+    return {
+      rootCause: 'A long-running reporting transaction held a write lock against the orders table, forcing API requests to wait behind a saturated connection pool.',
+      service: 'orders-db',
+      tags: ['postgres', 'transaction lock', 'connection pool'],
+      suggestedFix: 'Cancel the blocking reporting query, add the missing order-date index, and route the next report run to the read replica.',
+      matchedIncident: 'INC-1982 · reporting transaction lock',
+      confidence: 95,
+      duration: '24m',
+    };
+  }
+
+  if (/(auth|token|jwt|signing|401|403|credential)/.test(normalized)) {
+    return {
+      rootCause: 'A rotated signing key was not yet available in the identity edge cache, causing valid tokens to fail verification in one region.',
+      service: 'identity-edge',
+      tags: ['authentication', 'signing key', 'cache'],
+      suggestedFix: 'Purge the identity-edge key cache, confirm the new signing key is present in every region, and retry the rejected requests.',
+      matchedIncident: 'INC-1887 · stale signing key cache',
+      confidence: 94,
+      duration: '18m',
+    };
+  }
+
+  if (/(search|elastic|index|write queue|shard)/.test(normalized)) {
+    return {
+      rootCause: 'The search write queue saturated after a shard relocation, increasing indexing latency and pushing the service above its SLO.',
+      service: 'indexer-worker',
+      tags: ['elasticsearch', 'write queue', 'shard'],
+      suggestedFix: 'Pause the shard relocation, increase indexing worker capacity to 4, and drain the write queue before resuming the migration.',
+      matchedIncident: 'INC-2312 · elasticsearch write queue saturation',
+      confidence: 89,
+      duration: '42m',
+    };
+  }
+
+  return {
+    rootCause: 'An upstream dependency exceeded its response budget, causing retries to consume the service connection pool and return elevated 5xx responses.',
+    service: 'checkout-api',
+    tags: ['upstream dependency', '5xx responses', 'connection pool'],
+    suggestedFix: 'Roll back the latest gateway client change, increase the upstream idle pool to 64, and replay failed requests from the dead-letter queue.',
+    matchedIncident: 'INC-2034 · checkout gateway timeout',
+    confidence: 93,
+    duration: '27m',
+  };
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const helper = document.createElement('textarea');
+  helper.value = value;
+  helper.setAttribute('readonly', '');
+  helper.style.position = 'fixed';
+  helper.style.opacity = '0';
+  document.body.appendChild(helper);
+  helper.select();
+  const copied = document.execCommand('copy');
+  helper.remove();
+  if (!copied) throw new Error('Clipboard copy was not available');
+}
+
 function DashboardPage() {
   const [range, setRange] = useState('Last 30 days');
   return <div className="reveal">
@@ -187,6 +277,8 @@ function AnalyzePage() {
   const [logs, setLogs] = useState('');
   const [running, setRunning] = useState(false);
   const [stage, setStage] = useState(0);
+  const [analysis, setAnalysis] = useState<MockAnalysis | null>(null);
+  const [copied, setCopied] = useState(false);
   const stages = [{ label: 'Upload logs', icon: Upload }, { label: 'AI analysis', icon: Sparkles }, { label: 'Store in Hindsight', icon: Database }, { label: 'Recall similar incidents', icon: BrainCircuit }, { label: 'Suggest solution', icon: Lightbulb }];
   useEffect(() => {
     if (!running || stage >= stages.length - 1) return;
@@ -194,20 +286,42 @@ function AnalyzePage() {
     return () => window.clearTimeout(timer);
   }, [running, stage, stages.length]);
   useEffect(() => { if (running && stage === stages.length - 1) setRunning(false); }, [running, stage, stages.length]);
-  const startAnalysis = () => { if (!logs.trim()) return; setStage(1); setRunning(true); };
-  const handleFile = (event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (file) setLogs(`# ${file.name}\n2024-06-18T14:31:54Z checkout-api ERROR upstream connect error or disconnect/reset before headers\nrequest_id=8fd2a1 region=us-east-1 status=503 latency_ms=842`); };
+  const startAnalysis = () => {
+    if (!logs.trim()) return;
+    const nextAnalysis = getMockAnalysis(logs);
+    setAnalysis(null);
+    setCopied(false);
+    setStage(1);
+    setAnalysis(nextAnalysis);
+    setRunning(true);
+  };
+  const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) setLogs(`# ${file.name}\n2024-06-18T14:31:54Z ${file.name.replace(/\.[^.]+$/, '')} ERROR service signal loaded from uploaded log\nrequest_id=8fd2a1 region=us-east-1 status=503`);
+  };
+  const handleCopyFix = async () => {
+    if (!analysis) return;
+    try {
+      await copyText(analysis.suggestedFix);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  };
   const complete = stage >= stages.length - 1;
+  const clearInput = () => { setLogs(''); setStage(0); setAnalysis(null); setCopied(false); };
   return <div className="reveal">
     <PageHeading eyebrow="AI incident analysis" title="Turn noisy logs into a next move." description="RecallOps compares the signal against your incident memory and returns a reasoned fix." action={<div className="flex items-center gap-2 text-[11px] text-slate-500"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Mock workspace · no data leaves your browser</div>} />
     <div className="grid gap-5 xl:grid-cols-[1.02fr_.98fr]">
       <section className="panel rounded-2xl p-5 sm:p-6"><div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold text-slate-200">Incident input</h2><p className="mt-1 text-[11px] text-slate-500">Paste a stack trace, log excerpt, or upload a file.</p></div><Terminal size={18} className="text-blue-400" /></div>
         <textarea value={logs} onChange={(event) => setLogs(event.target.value)} data-testid="textarea-incident-logs" placeholder={'Paste logs here…\n\nExample: 2024-06-18T14:31:54Z checkout-api ERROR upstream connect error'} className="mt-5 h-[265px] w-full resize-none rounded-xl border border-white/10 bg-[#090f21] p-4 font-mono-ui text-[11px] leading-6 text-slate-300 outline-none transition-colors placeholder:text-slate-600 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/10" />
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><label data-testid="label-upload-logs" className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-[11px] font-semibold text-slate-300 transition-colors hover:border-blue-400/40 hover:bg-blue-400/5"><CloudUpload size={14} className="text-blue-400" /> Upload log file<input data-testid="input-upload-logs" type="file" accept=".log,.txt,.json" onChange={handleFile} className="hidden" /></label><span className="text-[10px] text-slate-600">TXT, LOG, JSON · up to 10 MB</span></div>
-        <div className="mt-5 flex items-center justify-between border-t border-white/[.07] pt-4"><button onClick={() => { setLogs(''); setStage(0); }} data-testid="button-clear-logs" className="text-[11px] text-slate-500 hover:text-slate-300">Clear input</button><button onClick={startAnalysis} disabled={!logs.trim() || running} data-testid="button-analyze-incident" className="flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-500/15 transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-40"><Sparkles size={14} /> {running ? 'Analyzing…' : 'Analyze incident'} <ArrowRight size={14} /></button></div>
+        <div className="mt-5 flex items-center justify-between border-t border-white/[.07] pt-4"><button onClick={clearInput} data-testid="button-clear-logs" className="text-[11px] text-slate-500 hover:text-slate-300">Clear input</button><button onClick={startAnalysis} disabled={!logs.trim() || running} data-testid="button-analyze-incident" className="flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-500/15 transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-40"><Sparkles size={14} /> {running ? 'Analyzing…' : 'Analyze incident'} <ArrowRight size={14} /></button></div>
       </section>
       <section className="panel rounded-2xl p-5 sm:p-6"><div><h2 className="text-sm font-semibold text-slate-200">Analysis pipeline</h2><p className="mt-1 text-[11px] text-slate-500">A transparent path from raw signal to an operator-ready suggestion.</p></div><div className="mt-6 space-y-0">{stages.map((item, index) => { const Icon = item.icon; const done = stage > index || complete; const active = stage === index && (running || index === 0); return <div key={item.label} className="flex gap-3"><div className="flex flex-col items-center"><div className={cx('flex h-8 w-8 items-center justify-center rounded-full border text-xs transition-colors', done ? 'border-blue-400/40 bg-blue-400/15 text-blue-300' : active ? 'border-violet-400/60 bg-violet-400/15 text-violet-300' : 'border-white/10 bg-white/[.03] text-slate-600')}>{done ? <Check size={14} /> : <Icon size={14} />}</div>{index < stages.length - 1 && <div className={cx('h-10 w-px transition-colors', stage > index ? 'bg-blue-400/60' : 'bg-white/10')} />}</div><div className="pb-6 pt-1"><p className={cx('text-[12px] font-semibold', done || active ? 'text-slate-200' : 'text-slate-500')}>{item.label}</p><p className="mt-1 text-[10px] text-slate-600">{done ? index === 1 ? 'Signal classified and contextualized' : index === 2 ? 'Pattern saved for future recall' : index === 3 ? '2 high-confidence matches found' : index === 4 ? 'Actionable fix generated' : 'Log source accepted' : active ? 'Working now…' : 'Waiting for previous step'}</p></div></div>; })}</div></section>
     </div>
-    {complete && <section className="panel reveal mt-5 overflow-hidden rounded-2xl border-blue-400/20"><div className="flex items-center justify-between border-b border-white/[.07] bg-blue-400/[.05] px-5 py-4 sm:px-6"><div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-400/15 text-emerald-300"><CheckCircle2 size={17} /></span><div><h2 className="text-sm font-semibold text-slate-100">Analysis ready</h2><p className="mt-0.5 text-[10px] text-slate-500">Completed in 2.4s · confidence 93%</p></div></div><span className="rounded-md border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">HIGH CONFIDENCE</span></div><div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1fr_1fr]"><div><p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Detected root cause</p><p data-testid="text-analysis-root-cause" className="text-[13px] leading-6 text-slate-300">A connection pool change in the payment gateway client exhausted available sockets during a traffic spike.</p><div className="mt-5 flex flex-wrap gap-2"><span className="rounded-md bg-blue-400/10 px-2 py-1 text-[10px] text-blue-300">checkout-api</span><span className="rounded-md bg-violet-400/10 px-2 py-1 text-[10px] text-violet-300">payment gateway</span><span className="rounded-md bg-slate-400/10 px-2 py-1 text-[10px] text-slate-400">connection pool</span></div></div><div className="rounded-xl border border-blue-400/15 bg-[#0b142b] p-4"><div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-blue-300"><Lightbulb size={13} /> Suggested solution</div><p data-testid="text-analysis-suggested-fix" className="mt-3 text-[12px] leading-6 text-slate-300">Roll back gateway-client 4.8.1, increase the upstream idle pool to 64, and replay failed checkout requests from the dead-letter queue.</p><div className="mt-4 flex gap-2"><button data-testid="button-copy-solution" onClick={() => navigator.clipboard?.writeText('Roll back gateway-client 4.8.1, increase the upstream idle pool to 64, and replay failed checkout requests.')} className="flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:bg-white/5"><Copy size={12} /> Copy fix</button><Link href="/history" data-testid="link-view-analysis-history" className="flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:bg-white/5">View history <ArrowUpRight size={12} /></Link></div></div></div></section>}
+    {complete && analysis && <section className="panel reveal mt-5 overflow-hidden rounded-2xl border-blue-400/20"><div className="flex items-center justify-between border-b border-white/[.07] bg-blue-400/[.05] px-5 py-4 sm:px-6"><div className="flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-400/15 text-emerald-300"><CheckCircle2 size={17} /></span><div><h2 className="text-sm font-semibold text-slate-100">Analysis ready</h2><p className="mt-0.5 text-[10px] text-slate-500">Completed in {analysis.duration} · confidence {analysis.confidence}%</p></div></div><span className="rounded-md border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[10px] font-semibold text-emerald-300">{analysis.confidence >= 90 ? 'HIGH' : 'MEDIUM'} CONFIDENCE</span></div><div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1fr_1fr]"><div><p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Detected root cause</p><p data-testid="text-analysis-root-cause" className="text-[13px] leading-6 text-slate-300">{analysis.rootCause}</p><div className="mt-5 flex flex-wrap gap-2"><span className="rounded-md bg-blue-400/10 px-2 py-1 text-[10px] text-blue-300">{analysis.service}</span>{analysis.tags.map((tag) => <span key={tag} className="rounded-md bg-violet-400/10 px-2 py-1 text-[10px] text-violet-300">{tag}</span>)}</div><div className="mt-5 rounded-lg border border-white/[.07] bg-white/[.025] p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Recalled from Hindsight</p><p data-testid="text-analysis-memory-match" className="mt-1.5 text-[11px] leading-5 text-slate-400">{analysis.matchedIncident}</p></div></div><div className="rounded-xl border border-blue-400/15 bg-[#0b142b] p-4"><div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-blue-300"><Lightbulb size={13} /> Suggested solution</div><p data-testid="text-analysis-suggested-fix" className="mt-3 text-[12px] leading-6 text-slate-300">{analysis.suggestedFix}</p><div className="mt-4 flex flex-wrap gap-2"><button data-testid="button-copy-solution" onClick={handleCopyFix} className="flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:bg-white/5">{copied ? <Check size={12} /> : <Copy size={12} />}{copied ? 'Copied' : 'Copy fix'}</button><Link href="/history" data-testid="link-view-analysis-history" className="flex items-center gap-1.5 rounded-md border border-white/10 px-2.5 py-1.5 text-[10px] font-semibold text-slate-300 hover:bg-white/5">View history <ArrowUpRight size={12} /></Link></div></div></div></section>}
   </div>;
 }
 
