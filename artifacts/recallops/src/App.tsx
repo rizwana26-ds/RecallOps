@@ -42,7 +42,7 @@ function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navItems = [
-    { href: '/', label: 'Overview', icon: LayoutDashboard },
+    { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
     { href: '/analyze', label: 'Analyze logs', icon: Sparkles },
     { href: '/history', label: 'Incident history', icon: History },
     { href: '/memory', label: 'Hindsight memory', icon: BrainCircuit },
@@ -69,7 +69,7 @@ function Shell({ children }: { children: ReactNode }) {
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-500">Workspace</p>
           <nav className="space-y-1">
             {navItems.map(({ href, label, icon: Icon }) => {
-              const active = href === '/' ? location === '/' || location === '/dashboard' : location.startsWith(href);
+              const active = location === href || location.startsWith(`${href}/`);
               return (
                 <Link href={href} key={href} onClick={() => setMobileOpen(false)} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`} className={cx(
                   'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-colors',
@@ -135,6 +135,103 @@ function PageHeading({ eyebrow, title, description, action }: { eyebrow: string;
     <div><div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.17em] text-blue-400"><span className="h-1.5 w-1.5 rounded-full bg-blue-400" /> {eyebrow}</div><h1 className="font-display text-2xl font-semibold tracking-tight text-slate-100 sm:text-[29px]">{title}</h1><p className="mt-1.5 text-sm text-slate-500">{description}</p></div>
     {action}
   </div>;
+}
+
+function LandingPage() {
+  const features = [
+    {
+      icon: AlertCircle,
+      title: 'AI-Powered Root Cause Analysis',
+      description: 'Turn noisy logs into a clear explanation of what happened and what to do next.',
+      tone: 'text-blue-300 bg-blue-400/10',
+    },
+    {
+      icon: BrainCircuit,
+      title: 'Persistent Incident Memory',
+      description: 'Capture the context behind every incident so your team gets smarter with every resolution.',
+      tone: 'text-violet-300 bg-violet-400/10',
+    },
+    {
+      icon: Lightbulb,
+      title: 'Reusable Solutions',
+      description: 'Find proven fixes from similar incidents and move from alert to action with confidence.',
+      tone: 'text-cyan-300 bg-cyan-400/10',
+    },
+  ] as const;
+
+  return (
+    <div className="min-h-[100dvh] overflow-hidden bg-[#080d1c] text-slate-100">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[620px] bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,.16),transparent_60%)]" />
+      <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
+        <Link href="/" data-testid="link-landing-brand" className="flex items-center gap-3">
+          <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-400 to-violet-500 shadow-lg shadow-blue-500/20">
+            <Command size={19} strokeWidth={2.5} className="text-white" />
+            <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cyan-200 ring-2 ring-[#080d1c]" />
+          </span>
+          <span className="font-display text-lg font-semibold tracking-tight text-slate-100">Recall<span className="text-blue-400">Ops</span></span>
+        </Link>
+        <Link href="/dashboard" data-testid="link-landing-dashboard" className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[.03] px-3.5 py-2 text-xs font-semibold text-slate-300 transition hover:border-blue-400/30 hover:bg-blue-400/10 hover:text-white">
+          Open workspace <ArrowUpRight size={14} />
+        </Link>
+      </header>
+
+      <main className="relative z-10 mx-auto max-w-6xl px-5 pb-16 sm:px-8 sm:pb-24 lg:px-10">
+        <section className="grid items-center gap-12 pb-20 pt-14 sm:pt-20 lg:grid-cols-[1.05fr_.95fr] lg:gap-16 lg:pb-28 lg:pt-24">
+          <div className="max-w-2xl">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-400/[.07] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[.16em] text-blue-300">
+              <Sparkles size={13} /> Incident intelligence for modern teams
+            </div>
+            <h1 className="max-w-xl font-display text-4xl font-semibold leading-[1.08] tracking-[-.04em] text-white sm:text-6xl lg:text-[68px]">Incident Resolution, <span className="bg-gradient-to-r from-blue-300 via-cyan-200 to-violet-300 bg-clip-text text-transparent">Powered by Memory</span></h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-slate-400 sm:text-lg sm:leading-8">RecallOps is an AI-powered incident troubleshooting assistant that learns from every outage, connects the right signals, and helps your team resolve the next incident faster.</p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link href="/dashboard" data-testid="button-landing-get-started" className="flex items-center justify-center gap-2 rounded-xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-xl shadow-blue-500/20 transition hover:bg-blue-400">
+                Get Started <ArrowRight size={16} />
+              </Link>
+              <Link href="/analyze" data-testid="button-landing-analyze" className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[.04] px-5 py-3 text-sm font-semibold text-slate-200 transition hover:border-violet-400/30 hover:bg-violet-400/10 hover:text-white">
+                Analyze an Incident <Sparkles size={15} />
+              </Link>
+            </div>
+            <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-slate-500">
+              <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-400" /> Built for on-call teams</span>
+              <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-400" /> Faster, repeatable resolution</span>
+            </div>
+          </div>
+
+          <div className="relative mx-auto w-full max-w-lg">
+            <div className="absolute -inset-5 rounded-[32px] bg-gradient-to-br from-blue-500/20 via-violet-500/10 to-transparent blur-2xl" />
+            <div className="relative rounded-3xl border border-white/[.1] bg-[#0d1530]/90 p-4 shadow-2xl shadow-blue-950/40 backdrop-blur-xl sm:p-5">
+              <div className="flex items-center justify-between border-b border-white/[.08] pb-4">
+                <div className="flex items-center gap-2.5"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-400/10 text-blue-300"><Activity size={15} /></span><div><p className="text-[11px] font-semibold text-slate-200">Live incident signal</p><p className="mt-0.5 text-[10px] text-slate-500">checkout-api · detected just now</p></div></div>
+                <span className="flex items-center gap-1.5 rounded-md bg-amber-400/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-amber-300"><span className="h-1.5 w-1.5 rounded-full bg-amber-300" /> Investigating</span>
+              </div>
+              <div className="mt-4 rounded-xl border border-red-400/10 bg-[#090f21] p-4 font-mono-ui text-[10px] leading-6 text-red-200/70">
+                <p>14:31:54 <span className="text-slate-600">checkout-api</span> ERROR</p>
+                <p>upstream connect timeout</p>
+                <p>retries exhausted · status=503</p>
+              </div>
+              <div className="mt-4 rounded-xl border border-violet-400/20 bg-gradient-to-br from-violet-500/[.12] to-blue-500/[.06] p-4">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-violet-300"><BrainCircuit size={14} /> Hindsight match found</div>
+                <p className="mt-3 text-xs leading-5 text-slate-300">Similar gateway timeouts were resolved by restoring the upstream connection pool and replaying failed requests.</p>
+                <div className="mt-4 flex items-center justify-between border-t border-white/[.08] pt-3"><span className="text-[10px] text-slate-500">Confidence</span><span className="font-display text-lg font-semibold text-blue-300">93%</span></div>
+              </div>
+              <div className="mt-4 flex items-center gap-2 text-[10px] text-slate-500"><CheckCircle2 size={13} className="text-emerald-400" /> Suggested fix ready for review <ArrowUpRight size={13} className="ml-auto text-slate-600" /></div>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-t border-white/[.07] pt-12 sm:pt-16">
+          <div className="mb-8 max-w-xl"><p className="mb-2 text-[10px] font-semibold uppercase tracking-[.17em] text-blue-400">A better incident workflow</p><h2 className="font-display text-2xl font-semibold tracking-tight text-slate-100 sm:text-3xl">From first signal to lasting knowledge.</h2></div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {features.map(({ icon: Icon, title, description, tone }) => <article key={title} className="rounded-2xl border border-white/[.08] bg-white/[.025] p-5 transition hover:-translate-y-1 hover:border-blue-400/25 hover:bg-white/[.04] sm:p-6"><span className={cx('flex h-10 w-10 items-center justify-center rounded-xl', tone)}><Icon size={19} /></span><h3 className="mt-5 text-sm font-semibold leading-5 text-slate-100">{title}</h3><p className="mt-2 text-xs leading-6 text-slate-500">{description}</p></article>)}
+          </div>
+        </section>
+      </main>
+
+      <footer className="relative z-10 border-t border-white/[.07] px-5 py-6 sm:px-8 lg:px-10">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 text-[11px] text-slate-600 sm:flex-row sm:items-center sm:justify-between"><span>RecallOps · Incident intelligence with memory</span><Link href="/dashboard" className="flex items-center gap-1 text-slate-500 transition hover:text-blue-300">Open workspace <ArrowUpRight size={12} /></Link></div>
+      </footer>
+    </div>
+  );
 }
 
 function SeverityBadge({ severity }: { severity: IncidentSeverity }) {
@@ -366,7 +463,7 @@ function NotFoundPage() {
 
 function Router() {
   const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}><Shell><Switch><Route path="/" component={DashboardPage} /><Route path="/dashboard" component={DashboardPage} /><Route path="/analyze" component={AnalyzePage} /><Route path="/history" component={HistoryPage} /><Route path="/memory" component={MemoryPage} /><Route path="/incidents/:id" component={IncidentDetailPage} /><Route component={NotFoundPage} /></Switch></Shell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><Switch><Route path="/" component={LandingPage} /><Route path="/dashboard"><Shell><DashboardPage /></Shell></Route><Route path="/analyze"><Shell><AnalyzePage /></Shell></Route><Route path="/history"><Shell><HistoryPage /></Shell></Route><Route path="/memory"><Shell><MemoryPage /></Shell></Route><Route path="/incidents/:id"><Shell><IncidentDetailPage /></Shell></Route><Route><Shell><NotFoundPage /></Shell></Route></Switch></ErrorBoundary>;
 }
 
 function App() {
